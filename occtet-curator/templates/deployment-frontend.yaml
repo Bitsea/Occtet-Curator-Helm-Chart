@@ -42,6 +42,10 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: {{ .Values.frontend.env.springProfilesActive | quote }}
+        {{- if .Values.frontend.env.javaOpts }}
+        - name: JAVA_OPTS
+          value: {{ .Values.frontend.env.javaOpts | quote }}
+        {{- end }}
         - name: DB_URL
           value: "jdbc:postgresql://{{ include "occtet-curator.postgresql.fullname" . }}:{{ .Values.postgresql.service.ports.postgresql }}/{{ .Values.postgresql.auth.database }}"
         - name: DB_USERNAME
