@@ -82,6 +82,11 @@ frontend:
     ## @param frontend.env.springProfilesActive Spring profiles to activate (e.g. "live" or "live,oidc" to enable OIDC)
     springProfilesActive: "live"
 
+    ## @param frontend.env.javaOpts JVM options passed to the frontend through JAVA_OPTS
+    ## Without them the JVM only uses 25% of the container memory limit as max heap.
+    ## ExitOnOutOfMemoryError lets Kubernetes restart the pod instead of keeping a broken JVM alive.
+    javaOpts: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
   ## @param frontend.existingSecret Name of existing secret for sensitive env vars
   ## Secret must contain: ort-password, keycloak-client-secret
   ## Secret is created by: make secrets-create
