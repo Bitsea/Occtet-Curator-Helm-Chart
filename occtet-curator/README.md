@@ -2,6 +2,49 @@
 
 This document describes the configuration values for the Occtet Curator Helm chart.
 
+## Installation from the OCI registry
+
+Each release of the chart is published to the GitHub Container Registry, with its dependencies
+(PostgreSQL, NFS provisioner):
+
+```bash
+helm install occtet-curator oci://ghcr.io/bitsea/charts/occtet-curator --version 0.1.0 \
+  --namespace curator --values my-values.yaml
+```
+
+A chart that deploys the Curator with the values of its installation can depend on it:
+
+```yaml
+# Chart.yaml
+dependencies:
+  - name: occtet-curator
+    version: 0.1.0
+    repository: oci://ghcr.io/bitsea/charts
+```
+
+Its values then go under the `occtet-curator` key, except `global.namespace`, which stays under
+`global`:
+
+```yaml
+global:
+  namespace: curator
+occtet-curator:
+  frontend:
+    env:
+      frontendBaseUrl: "https://curator.example.com/boc"
+```
+
+### Publishing a release
+
+1. Raise `version` in [Chart.yaml](Chart.yaml) in a pull request.
+2. After the merge, tag the merge commit with that version: `git tag v0.1.0 && git push origin v0.1.0`.
+3. The workflow [publish-chart.yml](../.github/workflows/publish-chart.yml) checks that the tag
+   matches the chart version, packages the chart with its dependencies and pushes it to
+   `oci://ghcr.io/<owner>/charts`.
+
+The first push creates the package `charts/occtet-curator` as private: make it public in its
+package settings, so that `helm pull` works without credentials.
+
 ## Global Parameters
 
 | Parameter | Description | Default |
