@@ -1,203 +1,99 @@
-# Frontend Configuration Examples
+# Curator configuration examples
 
-This directory contains example configurations for the Occtet Curator frontend with ORT and Keycloak integration.
+This directory holds the template of the Curator credentials secret. The settings of an installation go in a values file of your own, applied after the chart defaults ([occtet-curator/values.yaml](../occtet-curator/values.yaml)).
 
-## Files
+| File | Content |
+|---|---|
+| [occtet-curator-secrets-example.yaml](occtet-curator-secrets-example.yaml) | Template of the `occtet-curator-secrets` Secret |
 
-- `frontend-secrets-example.yaml` - Kubernetes Secret template for sensitive values (ORT password, Keycloak client secret)
-- `frontend-values-example.yaml` - Helm values.yaml example with full frontend configuration
-- `README.md` - This file
+## Create the credentials secret
 
-## Quick Start
-
-### 1. Configure ORT and Keycloak Integration
-
-#### Step 1: Create the Unified Secret
-
-A single secret contains all credentials (DB + ORT + Keycloak):
+A single secret, `occtet-curator-secrets` in the `curator` namespace, holds every credential. From the repository root:
 
 ```bash
-# Using the Makefile (recommended) — DB password is auto-generated:
-cd curator-helm-charts
-make secrets-create \
-  ORT_PASSWORD="your-ort-password" \
-  KEYCLOAK_SECRET="your-keycloak-client-secret"
-
-# Creates: occtet-curator-secrets
-# Keys: username, postgres-password, database, ort-password, keycloak-client-secret
-
-# Or manually with kubectl
-kubectl apply -f examples/frontend-secrets-example.yaml -n curator
+make secrets-create
 ```
 
-#### Step 2: (Optional) Configure CA Certificates
+The target creates the namespace if needed, refuses to overwrite an existing secret and prompts for each value. Passwords are not echoed. An empty answer keeps the default shown in brackets, and an empty PostgreSQL password is generated. A value set in the environment is used without prompting, even when empty: `DB_USER`, `DB_NAME`, `DB_PASSWORD`, `ORT_USERNAME`, `ORT_PASSWORD`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`.
 
-If you need to trust custom CA certificates for HTTPS connections:
+> **Warning:** PostgreSQL keeps the user, database and password of its first start. When the database volume already exists, enter its current values, not the defaults.
+
+To create it from the template instead, copy it to a name that `.gitignore` excludes, replace every `CHANGE_ME_*` value, then apply it:
 
 ```bash
-# Create a directory with your CA certificates
-mkdir -p /tmp/cacerts
-cp my-ca-cert.crt /tmp/cacerts/
-
-# Create ConfigMap
-make secrets-cacerts-create CACERTS_DIR=/tmp/cacerts
-
-# Or manually
-kubectl create configmap occtet-curator-cacerts \
-  -n curator \
-  --from-file=/tmp/cacerts/
+cp examples/occtet-curator-secrets-example.yaml occtet-curator.secret.yaml
+kubectl apply -n curator -f occtet-curator.secret.yaml
 ```
 
-#### Step 3: Configure Values
+Never commit a filled-in copy.
 
-Create a custom values file or use environment variables:
+| Key | Default in `make secrets-create` | Used for |
+|---|---|---|
+| `username` | `curator` | PostgreSQL application user (`DB_USERNAME` in the frontend and the backend services) |
+| `database` | `curator` | PostgreSQL database, created at the first start (`postgresql.customUser`) |
+| `postgres-password` | generated | PostgreSQL password of the superuser and the application user (`DB_PASSWORD`) |
+| `ort-username` | none, required | ORT Server user (`ORT_USERNAME`) |
+| `ort-password` | none, required | ORT Server password (`ORT_PASSWORD`) |
+| `keycloak-client-id` | `api-access` | Keycloak client (`KEYCLOAK_CLIENT_ID`) |
+| `keycloak-client-secret` | none, required | Secret of that client (`KEYCLOAK_CLIENT_SECRET` and `ORT_CLIENT_SECRET`) |
+
+Check the secret and list its keys (requires `jq`):
 
 ```bash
-# Copy the example
-cp examples/frontend-values-example.yaml my-values.yaml
-
-# Edit with your settings
-vim my-values.yaml
+make secrets-check
 ```
 
-Example configuration in `my-values.yaml`:
+## Trust additional CA certificates
+
+Optional. Put the certificates in a ConfigMap:
+
+```bash
+kubectl create configmap occtet-curator-cacerts -n curator --from-file=/path/to/cacerts/
+```
+
+Then reference it in your values file:
 
 ```yaml
 frontend:
-  env:
-    # ORT Configuration
-    ortTokenUrl: "https://ort-server.example.com/api/v1/auth/token"
-    ortBaseUrl: "https://ort-server.example.com/api/v1"
-    ortUsername: "occtet-user"
-    
-    # Keycloak Configuration
-    keycloakIssuerUri: "https://keycloak.example.com/realms/occtet"
-    keycloakClientId: "occtet-curator-frontend"
-    
-    # Frontend URL
-    frontendBaseUrl: "https://curator.example.com"
-  
-  # Reference to the secret created in Step 1
-  existingSecret: "occtet-curator-secrets"
-  
-  # Reference to CA certificates (if created in Step 2)
   caCerts:
-    existingConfigMap: "occtet-curator-cacerts"
+    existingConfigMap: occtet-curator-cacerts
 ```
 
-#### Step 4: Install/Upgrade with Custom Values
+It is mounted on `/cacerts` in the frontend and in the backend services with `mountCaCerts: true` (`ortRunStart`, `processRun`). `frontend.caCerts.existingSecret` does the same from a Secret. Without either, an empty directory is mounted.
+
+## Point the Curator at your ORT Server and Keycloak
+
+The addresses are under `frontend.env` in your values file:
+
+| Parameter | Example | Description |
+|---|---|---|
+| `frontend.env.ortBaseUrl` | `https://ort-server.example.com` | ORT Server API |
+| `frontend.env.ortTokenUrl` | `https://keycloak.example.com/realms/<realm>/protocol/openid-connect/token` | Token endpoint used to call ORT Server |
+| `frontend.env.ortClientId` | `api-access` | Keycloak client used to call ORT Server |
+| `frontend.env.keycloakIssuerUri` | `https://keycloak.example.com/realms/<realm>` | Issuer of the user login |
+| `frontend.env.frontendBaseUrl` | `https://curator.example.com/boc` | Public URL of the frontend |
+
+Because `frontend.existingSecret` is set, the user names, passwords, client ID and client secret come from `occtet-curator-secrets`. `frontend.env.ortUsername`, `ortPassword`, `keycloakClientId` and `keycloakClientSecret` are then ignored.
+
+To deploy with your values files (later files win; `.gitignore` excludes `values-*.yaml`):
 
 ```bash
-# Using Makefile
-make upgrade-custom VALUES=my-values.yaml
-
-# Or with helm directly
-helm upgrade occtet-curator ./occtet-curator \
-  --install \
-  --namespace curator \
-  --values my-values.yaml \
-  --wait \
-  --timeout 20m
-```
-
-## Configuration Reference
-
-### Frontend Environment Variables
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `ortTokenUrl` | ORT server token endpoint | No | `""` |
-| `ortBaseUrl` | ORT server base URL | No | `""` |
-| `ortUsername` | ORT username | No | `""` |
-| `ortPassword` | ORT password (use secret) | No | `""` |
-| `keycloakIssuerUri` | Keycloak issuer URI | No | `""` |
-| `keycloakClientId` | Keycloak client ID | No | `""` |
-| `keycloakClientSecret` | Keycloak client secret (use secret) | No | `""` |
-| `frontendBaseUrl` | Frontend base URL | No | `http://localhost:8090` |
-| `httpsCaCertPath` | Path to CA certificates | No | `/cacerts` |
-
-### Secrets
-
-#### Unified Secret
-
-Secret name: `occtet-curator-secrets`  
-Created by: `make secrets-create`
-
-Required keys:
-- `username` - PostgreSQL username
-- `postgres-password` - PostgreSQL password (auto-generated by Makefile)
-- `database` - PostgreSQL database name
-- `ort-password` - ORT API password
-- `keycloak-client-secret` - Keycloak OAuth2 client secret
-
-#### CA Certificates
-
-ConfigMap name: `occtet-curator-cacerts`
-
-Add your CA certificate files as data entries in the ConfigMap.
-
-## Development/Testing Without Authentication
-
-For development or testing without ORT/Keycloak:
-
-```yaml
-frontend:
-  env:
-    ortTokenUrl: ""
-    ortBaseUrl: ""
-    ortUsername: ""
-    keycloakIssuerUri: ""
-    keycloakClientId: ""
-    frontendBaseUrl: "http://localhost:8090"
-  
-  existingSecret: ""
-  
-  caCerts:
-    existingConfigMap: ""
+make upgrade VALUES_FILES="values-site.yaml values-custom.yaml"
 ```
 
 ## Troubleshooting
 
-### Check if secrets exist
-
 ```bash
-# Check all secrets (postgresql + frontend)
+# The secret and its keys
 make secrets-check
 
-# Check CA certificates
-make secrets-cacerts-check
-```
+# The CA certificates ConfigMap
+kubectl get configmap occtet-curator-cacerts -n curator
 
-### View frontend pod environment variables
+# Names of the frontend environment variables, without their values
+kubectl get pod -n curator -l app.kubernetes.io/component=frontend \
+  -o jsonpath='{.items[0].spec.containers[0].env[*].name}' | tr ' ' '\n'
 
-```bash
-kubectl get pod -n curator -l app.kubernetes.io/component=frontend -o jsonpath='{.items[0].spec.containers[0].env[*].name}' | tr ' ' '\n'
-```
-
-### Check frontend logs for authentication issues
-
-```bash
+# Frontend logs, for authentication errors
 make logs-frontend
-# or
-kubectl logs -n curator -l app.kubernetes.io/component=frontend --tail=100 -f
 ```
-
-### Verify secret is mounted
-
-```bash
-kubectl exec -n curator deployment/$(kubectl get deployment -n curator -l app.kubernetes.io/component=frontend -o jsonpath='{.items[0].metadata.name}') -- env | grep -E 'ORT|KEYCLOAK'
-```
-
-## Security Best Practices
-
-1. **Never commit secrets to Git** - Always use Kubernetes Secrets
-2. **Use existingSecret** - Reference secrets instead of putting passwords in values.yaml
-3. **Rotate credentials regularly** - Update secrets periodically
-4. **Limit access** - Use Kubernetes RBAC to control who can read secrets
-5. **Use external secret managers** - Consider tools like HashiCorp Vault or AWS Secrets Manager for production
-
-## Additional Resources
-
-- [ORT Documentation](https://oss-review-toolkit.org/)
-- [Keycloak Documentation](https://www.keycloak.org/documentation)
-- [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)

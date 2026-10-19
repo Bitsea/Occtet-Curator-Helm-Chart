@@ -109,6 +109,22 @@ ORT (OSS Review Toolkit) and Keycloak. It is referenced by
 | `keycloak-client-id` | Keycloak client ID | frontend |
 | `keycloak-client-secret` | Keycloak client secret | frontend + services with `useOrtCredentials` |
 
+**With Make**
+
+```bash
+make secrets-create
+```
+
+The target creates the namespace if needed, refuses to overwrite an existing secret and
+prompts for each value. Passwords are not echoed. An empty answer keeps the default shown in
+brackets (`curator` user and database, `api-access` client), and an empty PostgreSQL password
+is generated. PostgreSQL keeps the user, database and password of its first start: when the
+database volume already exists, enter its current values, not the defaults.
+
+A value set in the environment is used without prompting, even when empty (then the default
+applies): `DB_USER`, `DB_NAME`, `DB_PASSWORD`, `ORT_USERNAME`, `ORT_PASSWORD`,
+`KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, so that a script can create the secret.
+
 **Manual creation**
 
 ```bash
@@ -131,7 +147,8 @@ kubectl create secret generic occtet-curator-secrets \
 replace every placeholder value, then apply it:
 
 ```bash
-kubectl apply -f occtet-curator-secrets.yaml -n curator
+cp examples/occtet-curator-secrets-example.yaml occtet-curator.secret.yaml
+kubectl apply -f occtet-curator.secret.yaml -n curator
 ```
 
 **WARNING**: never commit a filled-in secret file. `.gitignore` already excludes
@@ -141,8 +158,11 @@ kubectl apply -f occtet-curator-secrets.yaml -n curator
 
 Services with `mountCaCerts: true` (`ortRunStart`, `processRun`) and the frontend mount
 custom CA certificates from `frontend.caCerts.existingSecret` or
-`frontend.caCerts.existingConfigMap`. Both default to `""`, in which case an `emptyDir`
-is mounted and no custom CA is trusted.
+`frontend.caCerts.existingConfigMap` on `/cacerts`. Both default to `""`, in which case an `emptyDir`
+is mounted and no custom CA is trusted. Their ORT Server client trusts the `.crt`, `.pem` and
+`.cert` files of the directory, and the frontend imports every file of it into its JVM trust
+store at startup, which the OpenID Connect login needs when Keycloak has a certificate of a
+private CA.
 
 #### Verifying Secrets
 
@@ -169,29 +189,34 @@ creates it (see [Creating Kubernetes Secrets](#creating-kubernetes-secrets)).
 make namespace
 
 # 2. Create the unified secret (see the section above)
-kubectl apply -f occtet-curator-secrets.yaml -n curator
+make secrets-create
 make secrets-check
 
 # 3. Install the chart
 make install
 ```
 
-`make install` runs `namespace`, `deps` (fetch chart dependencies) and `lint` first, then
-`helm install --wait --timeout 20m` using the chart's own `occtet-curator/values.yaml`.
+`make install` runs `namespace`, `deps` (fetch chart dependencies at the versions of
+`Chart.lock`) and `lint` first, then `helm install --wait --timeout 20m` with the chart
+defaults and the values files of `VALUES_FILES`, like `make upgrade`.
 
 ### Installation
 
 ```bash
-# Basic installation (chart defaults)
+# Installation with the chart defaults (occtet-curator/values.yaml)
 make install
 
-# Or install with custom values
-make install-custom VALUES=custom-values.yaml
+# Installation with your values, applied in this order after the chart defaults
+make install VALUES_FILES="my-values.yaml my-overrides.yaml"
+
+# On another kubectl context than the current one, in another namespace
+make install VALUES_FILES=my-values.yaml KUBE_CONTEXT=my-cluster NAMESPACE=curator-test
 ```
 
-**Note**: `make install` does **not** pass the repository-root `values.yaml`, while
-`make upgrade` does. To install with those overrides, use
-`make install-custom VALUES=values.yaml`.
+Every target that renders or deploys the chart (`lint`, `template`, `dry-run`, `install`,
+`upgrade`, `test`) uses the same `VALUES_FILES`, and every `kubectl` and `helm` command runs on
+`KUBE_CONTEXT` when it is set. The chart places its resources in `global.namespace`, which the
+Makefile sets from `NAMESPACE`.
 
 ### Quick Command Reference
 
@@ -246,7 +271,7 @@ make port-forward-postgresql  # Access at localhost:5432
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `global.namespace` | Kubernetes namespace | `curator` |
-| `imageRegistry` | Container image registry | `ghcr.io/heurtematte` |
+| `imageRegistry` | Container image registry | `ghcr.io/bitsea` |
 | `imageTag` | Global tag override for all images (empty = per-service tags) | `""` |
 | `imagePullPolicy` | Global pull policy override (empty = per-service policy) | `""` |
 | `frontend.enabled` | Enable frontend deployment | `true` |
@@ -416,7 +441,7 @@ backend:
 ## Container Images
 
 All images are hosted on GitHub Container Registry. The registry is set by
-`imageRegistry` (default `ghcr.io/heurtematte`) and the tag by the per-service
+`imageRegistry` (default `ghcr.io/bitsea`) and the tag by the per-service
 `image.tag`, unless `imageTag` overrides them globally:
 
 - Frontend: `<imageRegistry>/occtet-frontend:<tag>`
@@ -452,8 +477,8 @@ out of it. Set `nfsprovisioner.enabled: false` and point
 ## Upgrade
 
 ```bash
-# Upgrade (uses the repository-root values.yaml)
-make upgrade
+# Upgrade (or install) with the values files of VALUES_FILES
+make upgrade VALUES_FILES=my-values.yaml
 
 # Upgrade with another values file
 helm upgrade occtet-curator ./occtet-curator \
@@ -625,7 +650,7 @@ If `make upgrade` or `make install` exceeds the timeout (default: 20 minutes), t
 - Deploy without waiting, then monitor manually:
   ```bash
   helm upgrade occtet-curator ./occtet-curator \
-    --install --namespace curator --values values.yaml
+    --install --namespace curator --values my-values.yaml
   make watch-pods
   ```
 - Increase the timeout by editing the `install` target in the Makefile (currently 20m)
@@ -905,8 +930,8 @@ Generated from `make help`. Every target below exists in the [Makefile](Makefile
 ### Setup & Chart Lifecycle
 - `make help` - Display all available commands
 - `make check-helm` - Check if Helm is installed
-- `make namespace` - Create and label the `curator` namespace
-- `make deps` - Install Helm dependencies (PostgreSQL, NFS provisioner)
+- `make namespace` - Create the namespace `NAMESPACE` (default `curator`), outside the release
+- `make deps` - Install Helm dependencies (PostgreSQL, NFS provisioner) at the versions of `Chart.lock`
 - `make deps-list` - List current dependencies
 - `make deps-update` - Update dependencies to latest versions
 - `make lint` - Validate the chart
@@ -914,28 +939,27 @@ Generated from `make help`. Every target below exists in the [Makefile](Makefile
 - `make dry-run` - Installation simulation
 - `make test` - Lint + render the chart
 - `make package` - Package the chart as a `.tgz`
-- `make values` - Display the repository-root `values.yaml`
+- `make values` - Display the chart defaults, then the values files of `VALUES_FILES`
 - `make info` - Display chart information
 - `make clean` - Remove packaged `.tgz` files
 
 ### Installation & Upgrade
-- `make install` - Install the chart (requires the secret to exist beforehand)
+- `make install` - Install the chart with `VALUES_FILES` (requires the secret to exist beforehand)
 - `make install-custom VALUES=file.yaml` - Install with a custom values file
-- `make upgrade` - Upgrade (or install) using the repository-root `values.yaml`
+- `make upgrade` - Upgrade (or install) with `VALUES_FILES`
 - `make rollback` - Roll back to the previous release revision
 - `make rollback-version VERSION=3` - Roll back to a specific revision
 - `make history` - Display release history
 - `make uninstall` - Uninstall the chart (keeps PVCs and secrets)
 
 ### Secrets Management
+- `make secrets-create` - Create `occtet-curator-secrets`, prompting for each value (see
+  [Creating Kubernetes Secrets](#creating-kubernetes-secrets))
 - `make secrets-check` - Check that `occtet-curator-secrets` exists and list its keys
 - `make secrets-view` - Describe the secret (keys only)
 - `make secrets-get` - Print secret values (displays passwords!)
 - `make secrets-backup` - Dump the secret to `secrets-backup.yaml`
 - `make secrets-delete` - Delete the secret (interactive confirmation)
-
-**Note**: there is no `secrets-create` target - create the secret manually, see
-[Creating Kubernetes Secrets](#creating-kubernetes-secrets).
 
 ### Status & Inspection
 - `make status` - Display deployment status
