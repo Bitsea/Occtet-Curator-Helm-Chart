@@ -31,6 +31,8 @@ This document describes the configuration values for the Occtet Curator Helm cha
 | `frontend.ingress.className` | Ingress class name | `nginx` |
 | `frontend.ingress.hosts[0].host` | Ingress hostname | `curator` |
 | `frontend.env.javaOpts` | JVM options passed through `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
+| `frontend.env.maxFileSize` | Largest uploaded file (`MAX_FILE_SIZE`); the upload fields show the same limit | `200MB` |
+| `frontend.env.maxRequestSize` | Largest upload request (`MAX_REQUEST_SIZE`); a reverse proxy in front must accept it | `200MB` |
 | `frontend.resources.limits.cpu` | CPU limit | `2000m` |
 | `frontend.resources.limits.memory` | Memory limit | `4Gi` |
 | `frontend.resources.requests.cpu` | CPU request | `500m` |
