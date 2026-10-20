@@ -4,7 +4,7 @@ global:
   namespace: curator
 
 ## @section Image registry
-imageRegistry: ghcr.io/heurtematte
+imageRegistry: ghcr.io/bitsea
 
 ## @param imageTag Global image tag override for all services (overrides per-service tags)
 imageTag: ""
