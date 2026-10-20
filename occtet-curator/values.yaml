@@ -36,6 +36,8 @@ frontend:
       nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
       nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
       nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+      # Uploads up to frontend.env.maxRequestSize (the nginx default is 1m)
+      nginx.ingress.kubernetes.io/proxy-body-size: "200m"
       nginx.ingress.kubernetes.io/configuration-snippet: |
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -81,6 +83,18 @@ frontend:
   
     ## @param frontend.env.springProfilesActive Spring profiles to activate (e.g. "live" or "live,oidc" to enable OIDC)
     springProfilesActive: "live"
+
+    ## @param frontend.env.javaOpts JVM options passed to the frontend through JAVA_OPTS
+    ## Without them the JVM only uses 25% of the container memory limit as max heap.
+    ## ExitOnOutOfMemoryError lets Kubernetes restart the pod instead of keeping a broken JVM alive.
+    javaOpts: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+    ## Upload limits (spring.servlet.multipart), also the limit shown by the upload fields.
+    ## A reverse proxy in front of the frontend must accept requests of maxRequestSize.
+    ## @param frontend.env.maxFileSize Largest uploaded file (MAX_FILE_SIZE)
+    maxFileSize: "200MB"
+    ## @param frontend.env.maxRequestSize Largest upload request (MAX_REQUEST_SIZE)
+    maxRequestSize: "200MB"
 
   ## @param frontend.existingSecret Name of existing secret for sensitive env vars
   ## Secret must contain: ort-password, keycloak-client-secret

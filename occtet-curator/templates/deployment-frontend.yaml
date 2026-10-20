@@ -42,6 +42,18 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: {{ .Values.frontend.env.springProfilesActive | quote }}
+        {{- if .Values.frontend.env.javaOpts }}
+        - name: JAVA_OPTS
+          value: {{ .Values.frontend.env.javaOpts | quote }}
+        {{- end }}
+        {{- with .Values.frontend.env.maxFileSize }}
+        - name: MAX_FILE_SIZE
+          value: {{ . | quote }}
+        {{- end }}
+        {{- with .Values.frontend.env.maxRequestSize }}
+        - name: MAX_REQUEST_SIZE
+          value: {{ . | quote }}
+        {{- end }}
         - name: DB_URL
           value: "jdbc:postgresql://{{ include "occtet-curator.postgresql.fullname" . }}:{{ .Values.postgresql.service.ports.postgresql }}/{{ .Values.postgresql.auth.database }}"
         - name: DB_USERNAME
