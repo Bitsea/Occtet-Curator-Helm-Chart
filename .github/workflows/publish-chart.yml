@@ -1,0 +1,55 @@
+name: Publish the Helm chart
+
+# A tag vX.Y.Z publishes occtet-curator/ as oci://ghcr.io/<owner>/charts/occtet-curator:X.Y.Z.
+# The tag must match the version of occtet-curator/Chart.yaml. The package holds the dependencies
+# (PostgreSQL, NFS provisioner), so a chart that depends on it needs no repository of its own.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.22.0
+
+      - name: Check the tag against the chart version
+        run: |
+          version=$(helm show chart occtet-curator | sed -n 's/^version: //p')
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match the chart version ${version}"
+            exit 1
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      # Classic HTTP chart repositories must be known before helm dependency build can resolve
+      # them from Chart.lock; the oci:// dependencies are resolved directly.
+      - name: Build the dependencies
+        run: |
+          helm repo add nfs-ganesha-server-and-external-provisioner https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
+          helm dependency build occtet-curator
+
+      - name: Lint
+        run: helm lint occtet-curator
+
+      - name: Package
+        run: helm package occtet-curator
+
+      - name: Push to the GitHub Container Registry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+          helm push "occtet-curator-${VERSION}.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"

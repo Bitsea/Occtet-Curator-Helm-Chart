@@ -2,7 +2,7 @@ apiVersion: v2
 name: occtet-curator
 description: A Helm chart for Occtet Curator application - frontend and backend microservices
 type: application
-version: 0.0.1
+version: 0.1.0
 appVersion: "0.0.1"
 home: https://github.com/bitsea/occtet-curator
 maintainers:
