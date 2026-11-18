@@ -87,7 +87,8 @@ frontend:
     ## @param frontend.env.javaOpts JVM options passed to the frontend through JAVA_OPTS
     ## Without them the JVM only uses 25% of the container memory limit as max heap.
     ## ExitOnOutOfMemoryError lets Kubernetes restart the pod instead of keeping a broken JVM alive.
-    javaOpts: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+    ## -XX:-UseBASE64Intrinsics mitigates Java4Shell (CVE-2026-114938), see backend.javaOpts.
+    javaOpts: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -XX:-UseBASE64Intrinsics"
 
     ## Upload limits (spring.servlet.multipart), also the limit shown by the upload fields.
     ## A reverse proxy in front of the frontend must accept requests of maxRequestSize.
@@ -125,6 +126,13 @@ frontend:
 
 ## @section Backend services configuration
 backend:
+  ## @param backend.javaOpts JVM options of every backend service, passed through JDK_JAVA_OPTIONS
+  ## The images start "java -jar app.jar" without reading JAVA_OPTS; the java launcher reads
+  ## JDK_JAVA_OPTIONS. A service replaces this value with its own javaOpts.
+  ## -XX:-UseBASE64Intrinsics mitigates Java4Shell (CVE-2026-114938): on OpenJDK 17.0.6+ running on
+  ## x86-64 with AVX-512 VBMI, the intrinsic Base64 decoder overflows the heap on crafted input. The
+  ## flag makes java.util.Base64 run as plain Java. Remove it once the images ship a fixed JDK.
+  javaOpts: "-XX:-UseBASE64Intrinsics"
   services:
     ## License Matcher Service
     licensematcher:
