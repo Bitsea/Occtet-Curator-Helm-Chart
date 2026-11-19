@@ -73,7 +73,7 @@ package settings, so that `helm pull` works without credentials.
 | `frontend.ingress.enabled` | Enable Ingress | `false` |
 | `frontend.ingress.className` | Ingress class name | `nginx` |
 | `frontend.ingress.hosts[0].host` | Ingress hostname | `curator` |
-| `frontend.env.javaOpts` | JVM options passed through `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
+| `frontend.env.javaOpts` | JVM options passed through `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -XX:-UseBASE64Intrinsics` |
 | `frontend.env.maxFileSize` | Largest uploaded file (`MAX_FILE_SIZE`); the upload fields show the same limit | `200MB` |
 | `frontend.env.maxRequestSize` | Largest upload request (`MAX_REQUEST_SIZE`); a reverse proxy in front must accept it | `200MB` |
 | `frontend.resources.limits.cpu` | CPU limit | `2000m` |
@@ -140,6 +140,10 @@ package settings, so that `helm pull` works without credentials.
 
 ## Backend Services Configuration
 
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `backend.javaOpts` | JVM options of every backend service, passed through `JDK_JAVA_OPTIONS` | `-XX:-UseBASE64Intrinsics` |
+
 Each backend service has the following structure:
 
 | Parameter | Description | Default |
@@ -149,6 +153,7 @@ Each backend service has the following structure:
 | `backend.services.<service>.image.repository` | Image repository | varies |
 | `backend.services.<service>.image.tag` | Image tag | `latest` |
 | `backend.services.<service>.replicaCount` | Number of replicas | `1` |
+| `backend.services.<service>.javaOpts` | JVM options of this service, replacing `backend.javaOpts` (`""` sets none) | unset |
 | `backend.services.<service>.resources.limits.cpu` | CPU limit | `1000m` |
 | `backend.services.<service>.resources.limits.memory` | Memory limit | `2Gi` |
 
